@@ -1,0 +1,39 @@
+#include <zephyr/dt-bindings/pinctrl/esp32-pinctrl.h>
+
+/ {
+    aliases {
+        i2s-rx = &i2s0;   /* INMP441 mic  */
+        i2s-tx = &i2s1;   /* MAX98357 / PCM5102 speaker */
+    };
+};
+
+&pinctrl {
+    i2s0_default: i2s0_default {
+        group1 {
+            pinmux = <I2S0_I_BCK_GPIO2>,
+                     <I2S0_I_WS_GPIO15>,
+                     <I2S0_I_SD_GPIO13>;
+        };
+    };
+
+    /* ── TX: speaker amp ── */
+    i2s1_default: i2s1_default {
+        group1 {
+            pinmux = <I2S1_O_BCK_GPIO26>,
+                     <I2S1_O_WS_GPIO25>,
+                     <I2S1_O_SD_GPIO22>;
+        };
+    };
+};
+
+&i2s0 {
+    status = "okay";
+    pinctrl-0 = <&i2s0_default>;
+    pinctrl-names = "default";
+};
+
+&i2s1 {
+    status = "okay";
+    pinctrl-0 = <&i2s1_default>;
+    pinctrl-names = "default";
+};

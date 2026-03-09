@@ -1,0 +1,13 @@
+# Zephyr build output
+build/
+**/build/
+
+# West workspace artifacts
+.west/
+*.pyc
+__pycache__/
+
+# Editor files
+.vscode/
+*.swp
+.DS_Store
