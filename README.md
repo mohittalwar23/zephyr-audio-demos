@@ -4,7 +4,7 @@ Three standalone Zephyr RTOS applications demonstrating I2S audio
 capture and playback on an ESP32 DevKitC with an INMP441 microphone
 and MAX98357A amplifier.
 
----
+## Demo Video:
 
 <p align="center">
   <a href="https://youtu.be/NEN9BS6kGTw">
