@@ -14,10 +14,18 @@ raw 16-bit PCM frames over UART at 921600 baud.
 
 On the host, record to a WAV file:
 ```bash
-# Record 5 seconds
-cat /dev/ttyUSB0 > rec.raw
+
+stty -F /dev/ttyUSB0 921600 raw -echo
+
+# To stop recording press ctrl + c 
+ cat /dev/ttyUSB0 > recording.raw 
+
 # Convert to WAV (16kHz, mono, 16-bit)
-sox -r 16000 -e signed -b 16 -c 1 rec.raw output.wav
+sox -r 16000 -e signed -b 16 -c 1 recording.raw output.wav
+
+#play using aplay
+aplay output.wav
+
 ```
 
 **Wiring:**
