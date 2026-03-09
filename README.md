@@ -6,6 +6,13 @@ and MAX98357A amplifier.
 
 ---
 
+<p align="center">
+  <a href="https://youtu.be/NEN9BS6kGTw">
+    <img src="https://img.youtube.com/vi/NEN9BS6kGTw/maxresdefault.jpg" width="600">
+  </a>
+</p>
+
+
 ## Projects
 
 ### 1. `inmp441_capture` — I2S Microphone Capture
