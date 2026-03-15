@@ -1,83 +1,150 @@
-# Zephyr Audio Demos — ESP32
+# audio_pipeline — Real-Time PCM Audio Pipeline for Zephyr
 
-Three standalone Zephyr RTOS applications demonstrating I2S audio
-capture and playback on an ESP32 DevKitC with an INMP441 microphone
-and MAX98357A amplifier.
+A backend-agnostic real-time audio pipeline sample for Zephyr RTOS,
+validated on ESP32 with an INMP441 I2S microphone and MAX98357A I2S
+speaker amplifier. Demonstrates capture, buffering, format conversion,
+configurable delay, and optional on-device keyword spotting via
+TensorFlow Lite for Microcontrollers.
 
----
+This work is being developed as part of a GSoC 2026 proposal for the
+Zephyr project: *"Real-Time Audio Capture and Playback Pipeline for
+Zephyr with Optional ML Integration"*.
 
-## Projects
+Author: Mohit Talwar
 
-### 1. `inmp441_capture` — I2S Microphone Capture
-Captures audio from an INMP441 MEMS microphone over I2S and streams
-raw 16-bit PCM frames over UART at 921600 baud.
+## Pipeline Architecture
 
-On the host, record to a WAV file:
-```bash
-
-stty -F /dev/ttyUSB0 921600 raw -echo
-
-# To stop recording press ctrl + c 
- cat /dev/ttyUSB0 > recording.raw 
-
-# Convert to WAV (16kHz, mono, 16-bit)
-sox -r 16000 -e signed -b 16 -c 1 recording.raw output.wav
-
-#play using aplay
-aplay output.wav
+The pipeline is built from composable stages. Each stage communicates
+only through `pcm_block_t` — a PCM data pointer plus metadata
+(sample rate, channels, format, frame count). No stage knows what
+hardware the adjacent stage uses.
 
 ```
+                        LOOPBACK pipeline
+  ┌─────────────┐     ┌───────────┐     ┌──────────────┐     ┌─────────────┐
+  │ i2s_source  │────▶│pcm_convert│────▶│pcm_delay_node│────▶│  i2s_sink   │
+  │ (INMP441)   │     │mono→stereo│     │  (N blocks)  │     │ (MAX98357A) │
+  └─────────────┘     └───────────┘     └──────────────┘     └─────────────┘
 
-**Wiring:**
-| INMP441 | ESP32 GPIO |
-|---------|-----------|
-| SCK     | GPIO2     |
-| WS      | GPIO15    |
-| SD      | GPIO13    |
-| L/R     | GND       |
-| VDD     | 3.3V      |
+                        ML pipeline
+  ┌─────────────┐     ┌───────────┐     ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+  │ i2s_source  │────▶│pcm_convert│────▶│ pcm_ml_node │────▶│pcm_delay_node│────▶│  i2s_sink   │
+  │ (INMP441)   │     │mono→stereo│     │  (tap only) │     │  (N blocks)  │     │ (MAX98357A) │
+  └─────────────┘     └───────────┘     └──────┬──────┘     └──────────────┘     └─────────────┘
+                                                │ copy (non-destructive)
+                                         ┌──────▼──────┐
+                                         │  inference  │
+                                         │   thread    │
+                                         │ (TFLM MFSC  │
+                                         │  + CNN)     │
+                                         └─────────────┘
+```
 
----
+### Abstraction boundary
 
-### 2. `mario_player` — I2S Tone Sequencer / Mario Theme
-Plays the Super Mario Bros and Tetris themes through a MAX98357A
-amplifier using a sine-wave tone sequencer over I2S.
+The **init section** of `main.c` is intentionally backend-specific, it wires concrete hardware to the abstract interface:
 
-**Wiring:**
-| MAX98357A | ESP32 GPIO |
-|-----------|-----------|
-| BCLK      | GPIO26    |
-| LRC       | GPIO25    |
-| DIN       | GPIO22    |
-| VIN       | 5V        |
+```c
+i2s_source_cfg_t src_cfg = { .dev = DEVICE_DT_GET(DT_ALIAS(i2s_rx)), ... };
+i2s_source_init(&rx_source, &src_cfg);
+```
 
----
+The **pipeline loop** is fully backend-agnostic , it only calls the
+abstract interface and has no knowledge of I2S, DMIC, or any hardware:
 
-### 3. `i2s_loopback` — Record + Delayed Playback
-Captures audio from the INMP441 mic and plays it back through the
-MAX98357A speaker with a configurable rolling delay (~1 second).
-Uses a heap-allocated FIFO queue to avoid large static buffers.
+```c
+pcm_source_read((pcm_source_t *)&rx_source, &block, K_FOREVER);
+pcm_delay_node_push(&delay_node, &block);
+pcm_sink_write((pcm_sink_t *)&tx_sink, &block, K_MSEC(500));
+```
 
-**Wiring:** Both mic and speaker connected simultaneously (see above).
+This is the correct boundary. Adding a DMIC or USB backend requires
+zero changes to the pipeline loop, delay node, ML node, or sink.
 
----
 
-## Building any project
+## Building
+
+### Prerequisites
+
 ```bash
-cd ~/zephyrproject
-source zephyr/zephyr-env.sh
+# Enable the optional west group (tflite-micro lives there)
+west config manifest.group-filter +optional
+west update tflite-micro
+```
 
-# Example — build loopback
-west build -b esp32_devkitc/esp32/procpu ~/path/to/zephyr-audio-demos/i2s_loopback
+### Loopback (mic → delay → speaker, no ML)
 
+```bash
+west build --pristine -b esp32_devkitc/esp32/procpu . -- -DPIPELINE=loopback
 west flash
+```
+
+### ML pipeline — INT8 preprocessor (default, fits ESP32)
+
+```bash
+west build --pristine -b esp32_devkitc/esp32/procpu .
+west flash
+```
+
+### ML pipeline — float32 preprocessor
+
+```bash
+west build --pristine -b esp32_devkitc/esp32/procpu . -- -DMICRO_SPEECH_FLOAT_PREPROCESSOR=y
+west flash
+```
+
+### Monitor serial output
+
+```bash
 west espressif monitor
 ```
 
-## Hardware
+## ML Models
 
-- **MCU:** ESP32 DevKitC (WROOM, no PSRAM)
-- **Microphone:** INMP441 MEMS I2S microphone
-- **Amplifier:** MAX98357A I2S DAC + amp
-- **Zephyr version:** v4.3.0
+Two-stage pipeline from the TensorFlow Lite micro_speech example:
+
+| Stage | Model | Arena |
+|---|---|---|
+| Audio preprocessor (INT8) | MFSC feature extraction, INT8 quantized | 16 KB |
+| Audio preprocessor (float32) | MFSC feature extraction, float32 | 32 KB |
+| Keyword classifier | Depthwise-separable CNN, INT8 | 12 KB |
+
+**Output labels:** `silence` / `unknown` / `yes` / `no`
+
+The ML node is a **non-destructive tap** — the audio stream passes
+through to the delay node and speaker unchanged. Inference runs in a
+separate thread at lower priority so a slow inference run never causes
+a TX underrun.
+
+**Sliding window:** inference fires every 500 ms on the latest 1 second
+of audio, keeping worst-case detection latency under ~2 seconds.
+
+
+## Design Decisions
+
+| Requirement | How it's addressed |
+|---|---|
+| Backend-agnostic pipeline loop | `pcm_block_t` + vtable; pipeline loop never calls I2S directly |
+| Backend-specific init is intentional | `i2s_source_cfg_t` in `main.c` init — correct wiring layer, not a leak |
+| Explicit buffer ownership | Documented on every API; rules enforced consistently across all stages |
+| Channel/format conversion as separate stage | `pcm_convert.h` — not buried in backends |
+| Rolling delay as pipeline node | `pcm_delay_node_t` — reusable, not app logic |
+| ML as optional non-blocking tap | `pcm_ml_node_t` — sem-triggered inference thread; audio path unaffected |
+| Backpressure / underrun / overrun | `pcm_stats_t` on every stage; `-ENOBUFS` / `-ENODATA` return codes |
+| Observability | Stats logged every 500 blocks |
+| Automatic Kconfig per variant | `EXTRA_CONF_FILE` set in CMakeLists before `find_package(Zephyr)` |
+
+
+## Buffer Ownership Rules
+
+```
+pcm_source_read()        → caller owns block->data  (must call release())
+pcm_source_release()     → frees block->data
+pcm_sink_write()         → sink takes ownership on success
+pcm_delay_node_push()    → node takes ownership on success
+pcm_delay_node_pop()     → caller owns block->data (must k_free or pass to sink)
+pcm_ml_node_process()    → non-destructive tap, caller retains ownership
+pcm_mono_to_stereo_s16() → allocates new output, input ownership stays with caller
+```
+
 
