@@ -31,13 +31,13 @@ hardware the adjacent stage uses.
   │ i2s_source  │────▶│pcm_convert│────▶│ pcm_ml_node │────▶│pcm_delay_node│────▶│  i2s_sink   │
   │ (INMP441)   │     │mono→stereo│     │  (tap only) │     │  (N blocks)  │     │ (MAX98357A) │
   └─────────────┘     └───────────┘     └──────┬──────┘     └──────────────┘     └─────────────┘
-                                                │ copy (non-destructive)
-                                         ┌──────▼──────┐
-                                         │  inference  │
-                                         │   thread    │
-                                         │ (TFLM MFSC  │
-                                         │  + CNN)     │
-                                         └─────────────┘
+                                               │ copy (non-destructive)
+                                        ┌──────▼──────┐
+                                        │  inference  │
+                                        │   thread    │
+                                        │ (TFLM MFSC  │
+                                        │  + CNN)     │
+                                        └─────────────┘
 ```
 
 ### Abstraction boundary
