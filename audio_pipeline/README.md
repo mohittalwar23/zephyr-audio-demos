@@ -12,6 +12,15 @@ Zephyr with Optional ML Integration"*.
 
 Author: Mohit Talwar
 
+## Demo Video:
+
+<p align="center">
+  <a href="https://youtu.be/k0MjrtQENyk">
+    <img src="https://img.youtube.com/vi/k0MjrtQENyk/maxresdefault.jpg" width="600">
+  </a>
+</p>
+
+
 ## Pipeline Architecture
 
 The pipeline is built from composable stages. Each stage communicates
